@@ -1,0 +1,11 @@
+# Training.
+train_pipeline.batch_size = 4 # 4, 8
+train_pipeline.n_iterations = 8000000
+train_pipeline.save_every_n_batches = 10000
+train_pipeline.time_every_n_steps = 2000
+train_pipeline.lr_params = {'piecewise_lr': {'learning_rate': 1e-4, 'start_steps':0}}
+# train_pipeline.lr_params = {'one_cycle_lr': {'learning_rate': 4e-4, 'start_steps':0,
+#                             'max_train_steps':300000}}
+
+# Evaluation.
+eval_pipeline.batch_size = 16

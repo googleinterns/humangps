@@ -1,0 +1,50 @@
+# Data provider.
+
+
+# smpl + renderpeople + holodeck
+train_pipeline.dataset_params = {
+      'dataset':'human_correspondence_dataset',
+      'data_path': ['/cns/lu-d/home/feitongtan/human_correspondence/dataset/surreal/sstables_512/intra_sample_training_300000_65.0.sst*'],
+      'renderpeople_path': ['/cns/lu-d/home/feitongtan/human_correspondence/dataset/renderpeople/sstables_512/rp_training_900000.sst*'],
+      'holodeck_data_path': ['/cns/lu-d/home/feitongtan/human_correspondence/dataset/hololight/sstables_512/intra_10000_train_0.40_60.sst*'],
+      'dataset_proto_path':'/google_src/head/depot/google3/experimental/human_correspondence/pwc_net/surreal_512.textproto',
+      'is_training':True,
+     'attributes': ['low_resolution'],
+  }
+
+
+
+# hard test
+eval_pipeline.dataset_params = {
+    'eval_optical_flow':{
+    'dataset': 'human_correspondence_dataset',
+    'data_path': ['/cns/tp-d/home/yindaz/human_correspondence/dataset/surreal/sstables_512/intra_sample_test_3000_65.0.sst*'],
+    'dataset_proto_path': '/cns/tp-d/home/yindaz/human_correspondence/dataset/human_correspondence_512.textproto',
+    'is_training': False,
+     'attributes': ['low_resolution'],
+    },
+
+    'eval_optical_flow_inter':{
+    'dataset': 'human_correspondence_dataset',
+    'data_path': ['/cns/tp-d/home/yindaz/human_correspondence/dataset/surreal/sstables_512/inter_sample_test_3000_65.0.sst*'],
+    'dataset_proto_path': '/cns/tp-d/home/yindaz/human_correspondence/dataset/human_correspondence_512.textproto',
+    'is_training': False,
+     'attributes': ['low_resolution'],
+    },
+
+    'eval_optical_flow_rp':{
+    'dataset': 'human_correspondence_dataset',
+    'data_path': '/cns/tp-d/home/yindaz/human_correspondence/dataset/renderpeople/sstables_512/rp_testing_3000.sst*',
+    'dataset_proto_path': '/cns/tp-d/home/yindaz/human_correspondence/dataset/human_correspondence_512.textproto',
+    'is_training': False,
+     'attributes': ['low_resolution'],
+    },
+
+    'eval_optical_flow_hd':{
+    'dataset': 'human_correspondence_dataset',
+    'data_path': '/cns/tp-d/home/yindaz/human_correspondence/dataset/hololight/sstables_512/intra_2000_test_0.40_60.sst*',
+    'dataset_proto_path': '/cns/tp-d/home/yindaz/human_correspondence/dataset/human_correspondence_512.textproto',
+    'is_training': False,
+     'attributes': ['low_resolution'],
+    },
+}

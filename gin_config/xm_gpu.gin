@@ -1,0 +1,47 @@
+# XM config parameters.
+
+# pyformat: disable
+train/borg.mode = 'gpu'
+train/borg.cell = 'lu'
+train/borg.gpu = 4
+train/borg.gpu_type = 'v100'
+train/borg.cpu = 32
+train/borg.coordinator_priority = 115
+train/borg.worker_priority = 115
+
+eval_optical_flow/borg.mode = 'cpu'
+eval_optical_flow/borg.cell = 'lu'
+eval_optical_flow/borg.cpu = 16
+eval_optical_flow/borg.ram = 64
+eval_optical_flow/borg.worker_priority = 100
+eval_optical_flow/borg.coordinator_priority = 100
+
+eval_optical_flow_inter/borg.mode = 'cpu'
+eval_optical_flow_inter/borg.cell = 'lu'
+eval_optical_flow_inter/borg.cpu = 16
+eval_optical_flow_inter/borg.ram = 64
+eval_optical_flow_inter/borg.worker_priority = 100
+eval_optical_flow_inter/borg.coordinator_priority = 100
+
+eval_optical_flow_rp/borg.mode = 'cpu'
+eval_optical_flow_rp/borg.cell = 'lu'
+eval_optical_flow_rp/borg.cpu = 16
+eval_optical_flow_rp/borg.ram = 64
+eval_optical_flow_rp/borg.worker_priority = 100
+eval_optical_flow_rp/borg.coordinator_priority = 100
+
+eval_optical_flow_hd/borg.mode = 'cpu'
+eval_optical_flow_hd/borg.cell = 'lu'
+eval_optical_flow_hd/borg.cpu = 16
+eval_optical_flow_hd/borg.ram = 64
+eval_optical_flow_hd/borg.worker_priority = 100
+eval_optical_flow_hd/borg.coordinator_priority = 100
+
+# pyformat: enable
+experiment.train_script_or_build_target = '//vr/perception/deepholodeck/human_correspondence:train_main'
+experiment.eval_script_or_build_target = '//vr/perception/deepholodeck/human_correspondence:eval_main'
+
+experiment.eval_names = ('eval_optical_flow','eval_optical_flow_inter', 'eval_optical_flow_rp', 'eval_optical_flow_hd')
+
+experiment.with_tensorboard = True
+experiment.with_mldash = False
