@@ -3,7 +3,7 @@
 # training
 train_pipeline.dataset_params = {
       'dataset':'human_correspondence_dataset',
-      'data_path': '/usr/local/google/home/feitongtan/Documents/humangps/open_source/smpl_intra_test/',
+      'data_path': './test_data/smpl_intra_test/',
       'is_training':True,
       'attributes': ['low_resolution'],
   }
@@ -12,14 +12,14 @@ train_pipeline.dataset_params = {
 eval_pipeline.dataset_params = {
     'eval_optical_flow_intra':{
     'dataset': 'human_correspondence_dataset',
-    'data_path': '/usr/local/google/home/feitongtan/Documents/humangps/open_source/smpl_intra_test/',
+    'data_path': './test_data/smpl_intra_test/',
     'is_training': False,
      'attributes': ['low_resolution'],
     },
 
     'eval_optical_flow_inter':{
     'dataset': 'human_correspondence_dataset',
-    'data_path': '/usr/local/google/home/feitongtan/Documents/humangps/open_source/smpl_inter_test/',
+    'data_path': './test_data/smpl_inter_test/',
     'is_training': False,
      'attributes': ['low_resolution'],
     },
@@ -29,14 +29,14 @@ eval_pipeline.dataset_params = {
 inference_pipeline.dataset_params = {
     'eval_optical_flow_intra':{
     'dataset': 'human_correspondence_dataset',
-    'data_path': '/usr/local/google/home/feitongtan/Documents/humangps/open_source/smpl_intra_test/',
+    'data_path': './test_data/smpl_intra_test/',
     'is_training': False,
      'attributes': ['low_resolution'],
     },
 
     'eval_optical_flow_inter':{
     'dataset': 'human_correspondence_dataset',
-    'data_path': '/usr/local/google/home/feitongtan/Documents/humangps/open_source/smpl_inter_test/',
+    'data_path': './test_data/smpl_inter_test/',
     'is_training': False,
      'attributes': ['low_resolution'],
     },

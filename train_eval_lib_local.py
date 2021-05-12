@@ -598,8 +598,6 @@ def inference_pipeline(eval_mode: str, dataset_params: Dict[str, Any],
         eval_batch_scalar[key].append(scalar)
       else:
         eval_batch_scalar[key] = [scalar]
-    if i_batch > 20:
-      break
 
   eval_record['scalar_summaries'] = {}
   for key, record in eval_batch_scalar.items():

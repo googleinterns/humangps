@@ -1,5 +1,6 @@
 tensorflow
 numpy
 pillow
+scikit-learn
 tensorflow-addons
 gin-config

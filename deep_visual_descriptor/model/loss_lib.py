@@ -392,7 +392,7 @@ class GeodesicFeatureLoss:
             axis=-1,
             keepdims=True) - self._triplet_tau)
     negative_loss = tf.maximum(
-        zeros, 1 - self._triplet_tau - tf.reduce_sum(
+        zeros, 1 + self._triplet_tau - tf.reduce_sum(
             tf.square(reference_feature - negative_feature),
             axis=-1,
             keepdims=True))

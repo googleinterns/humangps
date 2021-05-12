@@ -15,7 +15,7 @@
 
 
 MODE="cpu" # Training mode.
-BASE_FOLDER="/usr/local/google/home/feitongtan/Documents/tmp" # Folder to save log and checkpoint.
+BASE_FOLDER="./experiment/1/" # Folder to save log and checkpoint.
 MODEL_GIN="./gin_config/model_config.gin" # Gin configuration for model.
 DATA_GIN="./gin_config/data_config.gin" # Gin configuration for data.
 TRAIN_EVAL_GIN="./gin_config/train_eval_config_local.gin" # Gin configuration for train_eval.
@@ -30,4 +30,4 @@ cp -f "${DATA_GIN}" "$BASE_FOLDER/gin_config"
 cp -f "${TRAIN_EVAL_GIN}" "$BASE_FOLDER/gin_config"
 
 echo "python train_main_local.py --base_folder "$BASE_FOLDER" --mode "$MODE" --gin_configs "${MODEL_GIN}" --gin_configs "${DATA_GIN}" --gin_configs "${TRAIN_EVAL_GIN}""
-#python train_main_local.py --base_folder "$BASE_FOLDER" --mode="$FLAGS_mode" --gin_configs="${FLAGS_model_gin}" --gin_configs="${FLAGS_data_gin}" --gin_configs="${FLAGS_train_eval_gin}"
+python train_main_local.py --base_folder "$BASE_FOLDER" --mode "$MODE" --gin_configs "${MODEL_GIN}" --gin_configs "${DATA_GIN}" --gin_configs "${TRAIN_EVAL_GIN}"
