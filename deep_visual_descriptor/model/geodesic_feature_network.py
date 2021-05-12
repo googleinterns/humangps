@@ -18,14 +18,13 @@ from typing import Any, Dict, Tuple, Sequence
 
 import tensorflow as tf
 
-from google3.research.vision.piedpiper.brain.python.ops import flow_ops
-from google3.vr.perception.deepholodeck.human_correspondence.deep_visual_descriptor import utils_lib as descriptor_utils
-from google3.vr.perception.deepholodeck.human_correspondence.deep_visual_descriptor.model import loss_lib
-from google3.vr.perception.deepholodeck.human_correspondence.deep_visual_descriptor.network import resunet_extractor_lib
+from deep_visual_descriptor import utils_lib as descriptor_utils
+from deep_visual_descriptor.model import loss_lib
+from deep_visual_descriptor.network import resunet_extractor_lib
 
 _UINT_16 = 65535
 _EPSILON = 1e-12
-_SEARCH_SIZE = (192, 128)
+_SEARCH_SIZE = (240, 160)
 
 
 class GeoFeatureNet(tf.keras.Model):
@@ -169,7 +168,7 @@ class GeoFeatureNet(tf.keras.Model):
     image_summaries = self._get_image_summaries(input_batch)
     training_loss = scalar_summaries['training_loss']
 
-    return training_loss, scalar_summaries, image_summaries
+    return (training_loss, scalar_summaries, image_summaries)
 
   def get_eval_outputs(
       self, input_batch: Dict[str, tf.Tensor]
@@ -232,18 +231,18 @@ class GeoFeatureNet(tf.keras.Model):
     source_mask = tf.cast(input_batch['masks'][:, 0], tf.float32)
     image_summaries['first_image'] = (images[:, 0] + 1.0) / 2.0
     image_summaries['second_image'] = (images[:, 1] + 1.0) / 2.0
-    gt_warped_image = flow_ops.bilinear_warp(
-        input_batch['images'][:, 1, ...],
-        input_batch['flows'] * self._flow_scale_factor) * source_mask
+    ### visualize ground-truth labeling.
+    gt_warped_image = descriptor_utils.bilinear_warp(
+        input_batch['images'][:, 1, ...], input_batch['flows']) * source_mask
     image_summaries['gt_warped_image'] = (gt_warped_image + 1.0) / 2.0
-    image_summaries['gt_flow'] = flow_ops.create_flow_image(
-        input_batch['flows'] * self._flow_scale_factor,
-        saturate_magnitude=30) / 255
+    image_summaries['gt_flow'] = descriptor_utils.create_flow_image(
+        input_batch['flows'], saturate_magnitude=30) / 255
     image_summaries['gt_diff_image'] = tf.abs(
         image_summaries['gt_warped_image'] - image_summaries['first_image'])
-    image_summaries['flow_search'] = flow_ops.create_flow_image(
+    ### visualize predicted results
+    image_summaries['flow_search'] = descriptor_utils.create_flow_image(
         self.correspondence_maps * source_mask, saturate_magnitude=30) / 255
-    warped_image_search = flow_ops.bilinear_warp(
+    warped_image_search = descriptor_utils.bilinear_warp(
         input_batch['images'][:, 1, ...],
         self.correspondence_maps) * source_mask
     image_summaries['warped_image_search'] = (warped_image_search + 1.0) / 2.0

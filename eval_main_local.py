@@ -19,7 +19,7 @@ from absl import app
 from absl import flags
 import gin.tf
 
-from google3.vr.perception.deepholodeck.human_correspondence import train_eval_lib_local
+import train_eval_lib_local
 
 flags.DEFINE_enum('mode', None, ['cpu', 'gpu'],
                   'Distributed strategy approach.')

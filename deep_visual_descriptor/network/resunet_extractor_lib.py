@@ -124,9 +124,8 @@ class ResidualBlock(tf.keras.layers.Layer):
     outputs = self.relu(self.conv1(self.norm1(inputs, training=training)))
     outputs = self.relu(self.conv2(self.norm2(outputs, training=training)))
     skip_outputs = self.skip_norm(self.skip_conv(inputs), training=training)
-    outputs = outputs + skip_outputs
 
-    return outputs
+    return outputs + skip_outputs
 
 
 class ResUNet(tf.keras.Model):

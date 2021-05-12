@@ -5,57 +5,58 @@
 get_training_elements.model_component = 'GeoFeatureNet'
 get_training_elements.model_hparams = {
       'loss_hparams': {
-          'correspondence_loss_weight': 1.0,
-          'triplet_loss_weight': 1.0,
-          'dense_geodesic_loss_weight': 3.0,
-          'cross_dense_geodesic_loss_weight': 3.0,
-          'sparse_ordinal_geodesic_loss_weight': 5.0,
+          'correspondence_loss_weight': 0.3,
+          'triplet_loss_weight': 2.0,
+          'dense_geodesic_loss_weight': 6.0,
+          'cross_dense_geodesic_loss_weight': 4.0,
+          'sparse_ordinal_geodesic_loss_weight': 2.0,
       },
       'flow_scale_factor': 20.0,
-      'return_feature_pyramid': True,
+      'return_feature_pyramid': False,
       'feature_extractor': 'resunet',
-    'filters_sequence': (16, 32, 64, 96, 128, 128, 196),
+      'eval_search_size': (384, 256),
+      'filters_sequence': (16, 32, 64, 96, 128, 128, 196),
   }
 
-get_training_elements.model_component = 'PWCNet'
-get_training_elements.model_hparams = {
-      'loss_hparams': {
-          'correspondence_loss_weight': 1.0,
-          'triplet_loss_weight': 0.2,
-          'dense_geodesic_loss_weight': 3.0,
-          'cross_dense_geodesic_loss_weight': 3.0,
-          'sparse_ordinal_geodesic_loss_weight': 5.0,
-          'optical_flow_loss_weight': 1.0,
-      },
-      'encoder_filters_sequence': (None, 16, 32, 64, 96, 128, 196),
-      'decoder_filters_sequence': (196, 128, 96, 64, 32, 16),
-      'prediction_level': 0,
-      'cost_volume_range': 4,
-      'use_dense_connections': True,
-      'flow_scale_factor': 20,
-      'scale_upsampled_flow': True,
-      'path_drop_probabilities': [1.0, 1.0],
-      'use_normalized_feature': True,
-      'has_pred_mask': True,
-  }
+# get_training_elements.model_component = 'PWCNet'
+# get_training_elements.model_hparams = {
+#       'loss_hparams': {
+#           'correspondence_loss_weight': 1.0,
+#           'triplet_loss_weight': 0.2,
+#           'dense_geodesic_loss_weight': 3.0,
+#           'cross_dense_geodesic_loss_weight': 3.0,
+#           'sparse_ordinal_geodesic_loss_weight': 5.0,
+#           'optical_flow_loss_weight': 1.0,
+#       },
+#       'encoder_filters_sequence': (None, 16, 32, 64, 96, 128, 196),
+#       'decoder_filters_sequence': (196, 128, 96, 64, 32, 16),
+#       'prediction_level': 0,
+#       'cost_volume_range': 4,
+#       'use_dense_connections': True,
+#       'flow_scale_factor': 20,
+#       'scale_upsampled_flow': True,
+#       'path_drop_probabilities': [1.0, 1.0],
+#       'use_normalized_feature': True,
+#       'has_pred_mask': True,
+#   }
 
 
-get_training_elements.model_component = 'RAFT'
-get_training_elements.model_hparams = {
-      'loss_hparams': {
-          'correspondence_loss_weight': 1.0,
-          'triplet_loss_weight': 0.2,
-          'dense_geodesic_loss_weight': 3.0,
-          'cross_dense_geodesic_loss_weight': 3.0,
-          'sparse_ordinal_geodesic_loss_weight': 5.0,
-          'optical_flow_loss_weight': 1.0,
-      },
-      'flow_scale_factor': 20,
-      'max_rec_iters': 12,
-      'drop_out': 0.0,
-      'use_norms': True,
-      'small': False,
-      'path_drop_probabilities': [1.0, 1.0],
-  }
+# get_training_elements.model_component = 'RAFT'
+# get_training_elements.model_hparams = {
+#       'loss_hparams': {
+#           'correspondence_loss_weight': 1.0,
+#           'triplet_loss_weight': 0.2,
+#           'dense_geodesic_loss_weight': 3.0,
+#           'cross_dense_geodesic_loss_weight': 3.0,
+#           'sparse_ordinal_geodesic_loss_weight': 5.0,
+#           'optical_flow_loss_weight': 1.0,
+#       },
+#       'flow_scale_factor': 20,
+#       'max_rec_iters': 12,
+#       'drop_out': 0.0,
+#       'use_norms': True,
+#       'small': False,
+#       'path_drop_probabilities': [1.0, 1.0],
+#   }
 
 

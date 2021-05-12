@@ -12,18 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Data Input functions for PWC-Net.
+"""Data Input functions.
 
 It loads image pairs and the ground truth flow field from the first to the
 second image, applies data augmentation, and returns the augmented data
 
 """
 from typing import Any, Dict, Text, Tuple
+from PIL import Image
 
-import tensorflow.google as tf
+import os
+import numpy as np
+import tensorflow as tf
 
-from google3.vr.perception.deepholodeck.human_correspondence.optical_flow import utils_lib
-from google3.vr.perception.tensorflow.data import dataset_loading
+from optical_flow import utils_lib
 
 # The GT flow will be divided by this scale factor (default 20.0) and used as
 # supervision signal, so as to use the learning rate schedule proposed in
@@ -34,15 +36,26 @@ _FORWARD_FLOW_OFFSET = 32768.0
 _UINT_16_FACTOR = 65535.0
 _MAX_GEODESIC = 5.0
 _LOW_RESOLUTION_SIZE = (384, 256)
-_MASK_THRESHOLD = 127
+_MASK_THRESHOLD = 0.5
 
 _BRIGHTNESS_MAX_DELTA = 0.1
 _CONTRAST_LOWER = 0.8
 _CONTRAST_UPPER = 1.2
 _HUE_MAX_DELTA = 0.02
-_RATIO_SMPL_RP = (0.1, 0.9)
-_RATIO_RP_HOLODECK = (0.85, 0.15)
+_RATIO_ADD_RP = (0.05, 0.95)
+_RATIO_ADD_HOLODECK = (0.85, 0.15)
+_RATIO_ADD_SMPL_INTER = (0.95, 0.05)
+
 _NUM_MAPS = 4
+
+_DATA_IMG_SHAPE = (768, 512, 3)
+_DATA_MASK_SHAPE = (768, 512, 1)
+_DATA_FLOW_SHAPE = (768, 512, 2)
+_DATA_FLOW_MASK_SHAPE = (768, 512, 1)
+_DATA_KEYPOINT_SHAPE = (256, 2)
+_DATA_MATRIX_SHAPE = (128, 128, 1)
+_DATA_CENTER_SHAPE = (4, 2)
+_DATA_MAP_SHAPE = (768, 512, 4)
 
 
 def augment_colors(batch):
@@ -52,8 +65,8 @@ def augment_colors(batch):
 
   # Convert to [0, 1] before applying color augmentation.
   images = (images + 1) / 2
-  source_image = images[0, :, :, :]
-  target_image = images[1, :, :, :]
+  source_image = images[:, 0, :, :, :]
+  target_image = images[:, 1, :, :, :]
 
   # Adjust brightness of the source and target image respectively.
   brightness_delta = tf.random.uniform([], -_BRIGHTNESS_MAX_DELTA,
@@ -73,107 +86,179 @@ def augment_colors(batch):
   source_image = tf.image.random_hue(source_image, _HUE_MAX_DELTA)
   target_image = tf.image.random_hue(target_image, _HUE_MAX_DELTA)
 
-  images = tf.stack([source_image, target_image])
+  images = tf.stack([source_image, target_image], axis=1)
   images = images * tf.cast(masks, dtype=tf.float32)
   batch['images'] = images * 2 - 1
   return batch
 
 
-def _preprocess(example: Dict[Text, tf.Tensor],
-                attributes: Tuple[Text]) -> Dict[Text, Any]:
+
+def _parse_function(filename: tf.Tensor, base_path: tf.Tensor):
+  """load color image, ground-truth optical flow and geodesic labels."""
+  filename = filename.numpy().decode("utf-8")
+  base_path = base_path.numpy().decode("utf-8")
+
+  (src_img_filename, tgt_img_filename, src_mask_filename, tgt_mask_filename,
+   flow_filename, geodesic_gt_filename) = filename.split(' ')
+
+  src_img_filename = os.path.join(base_path, src_img_filename)
+  tgt_img_filename = os.path.join(base_path, tgt_img_filename)
+  src_mask_filename = os.path.join(base_path, src_mask_filename)
+  tgt_mask_filename = os.path.join(base_path, tgt_mask_filename)
+  flow_filename = os.path.join(base_path, flow_filename)
+  geodesic_gt_filename = os.path.join(base_path, geodesic_gt_filename)
+
+  # Read color images.
+  src_img = np.array(Image.open(open(src_img_filename, 'rb')))
+  tgt_img = np.array(Image.open(open(tgt_img_filename, 'rb')))
+
+  # Read masks.
+  with open(src_mask_filename, 'rb') as f:
+    with np.load(f) as data:
+      src_mask = data['mask']
+  with open(tgt_mask_filename, 'rb') as f:
+    with np.load(f) as data:
+      tgt_mask = data['mask']
+
+  # Read flows.
+  with open(flow_filename, 'rb') as f:
+    with np.load(f) as data:
+      flows = data['flows']
+      flow_mask = data['flow_mask']
+
+  # Read geodesic groundtruth.
+  with open(geodesic_gt_filename, 'rb') as f:
+    with np.load(f) as data:
+      source_geo_keypoints = data['source_geo_keypoints']
+      source_geodesic_matrix = data['source_geodesic_matrix']
+      target_geo_keypoints = data['target_geo_keypoints']
+      target_geodesic_matrix = data['target_geodesic_matrix']
+      source_geo_centers = data['source_geo_centers']
+      source_geodesic_maps = data['source_geodesic_maps']
+      target_geo_centers = data['target_geo_centers']
+      target_geodesic_maps = data['target_geodesic_maps']
+      source_cross_geo_centers = data['source_cross_geo_centers']
+      source_cross_geodesic_maps = data['source_cross_geodesic_maps']
+      target_cross_geo_centers = data['target_cross_geo_centers']
+      target_cross_geodesic_maps = data['target_cross_geodesic_maps']
+
+  data = (src_img, tgt_img, src_mask, tgt_mask, flows, flow_mask,
+          source_geo_keypoints, source_geodesic_matrix, target_geo_keypoints,
+          target_geodesic_matrix, source_geo_centers, source_geodesic_maps,
+          target_geo_centers, target_geodesic_maps, source_cross_geo_centers,
+          source_cross_geodesic_maps, target_cross_geo_centers,
+          target_cross_geodesic_maps)
+  return data
+
+
+def tf_parse_function(filename: tf.Tensor, base_path: str, attributes: Tuple[str]):
   """Preprocess the example.
 
   Args:
-    example: A dictionary of Text keys and Tensor values.
+    filename: A line of filenames indicating the relative path to data.
     attributes: A list of string to define the attributes of the data.
 
   Returns:
     output_example: Processed data.
   """
+  (src_img, tgt_img, src_mask, tgt_mask, flows, flow_mask, source_geo_keypoints,
+   source_geodesic_matrix, target_geo_keypoints, target_geodesic_matrix,
+   source_geo_centers, source_geodesic_maps, target_geo_centers,
+   target_geodesic_maps, source_cross_geo_centers, source_cross_geodesic_maps,
+   target_cross_geo_centers, target_cross_geodesic_maps) = tf.py_function(
+       _parse_function,
+       inp=[filename, base_path],
+       Tout=[
+           tf.uint8, tf.uint8, tf.bool, tf.bool, tf.float32, tf.bool,
+           tf.float32, tf.float32, tf.float32, tf.float32, tf.float32,
+           tf.float32, tf.float32, tf.float32, tf.float32, tf.float32,
+           tf.float32, tf.float32
+       ])
+
   output_example = dict()
 
   # Extract the images, and scale them to [-1, 1].
-  source_image = tf.cast(example['source_rgb'], tf.float32) / 127.5 - 1.0
-  target_image = tf.cast(example['target_rgb'], tf.float32) / 127.5 - 1.0
+  source_image = tf.cast(src_img, tf.float32) / 127.5 - 1.0
+  target_image = tf.cast(tgt_img, tf.float32) / 127.5 - 1.0
+  source_image.set_shape(_DATA_IMG_SHAPE)
+  target_image.set_shape(_DATA_IMG_SHAPE)
   images = tf.stack([source_image, target_image])
   _, height, width, _ = images.get_shape().as_list()
   if 'low_resolution' in attributes:
     images = tf.image.resize(images, _LOW_RESOLUTION_SIZE, method='bilinear')
 
   # Extract the masks.
-  source_mask = example['source_mask']
-  target_mask = example['target_mask']
+  source_mask = src_mask
+  target_mask = tgt_mask
+  source_mask.set_shape(_DATA_MASK_SHAPE)
+  target_mask.set_shape(_DATA_MASK_SHAPE)
   masks = tf.stack([source_mask, target_mask])
   if 'low_resolution' in attributes:
-    masks = tf.image.resize(masks, _LOW_RESOLUTION_SIZE, method='bilinear')
-  masks = masks > _MASK_THRESHOLD
+    masks = tf.cast(masks, tf.float32)
+    masks = tf.image.resize(masks, _LOW_RESOLUTION_SIZE, method='nearest')
+    masks = masks > _MASK_THRESHOLD
 
   # Extract the flow, and scale it.
-  flows = (tf.cast(example['forward_flow'], tf.float32) -
-           _FORWARD_FLOW_OFFSET) / _FORWARD_FLOW_SCALE
-  flows = flows / _FLOW_SCALE_FACTOR
-  flow_mask = example['flow_mask'] > _MASK_THRESHOLD
+  flows = flows
+  flow_mask = flow_mask
+  flows.set_shape(_DATA_FLOW_SHAPE)
+  flow_mask.set_shape(_DATA_FLOW_MASK_SHAPE)
   if 'low_resolution' in attributes:
     flows = utils_lib.compute_upsample_flow(flows, _LOW_RESOLUTION_SIZE)
-    flow_mask = tf.image.resize(
-        example['flow_mask'], _LOW_RESOLUTION_SIZE, method='nearest')
+    flow_mask = tf.cast(flow_mask, tf.float32)
+    flow_mask = tf.image.resize(flow_mask, _LOW_RESOLUTION_SIZE, method='nearest')
     flow_mask = flow_mask > _MASK_THRESHOLD
 
   # Extract geodesic maps
-  source_geodesic_maps = tf.cast(example['source_geodesic_maps'],
-                                 tf.float32) / _UINT_16_FACTOR * _MAX_GEODESIC
-  source_geodesic_maps = tf.reshape(source_geodesic_maps,
-                                    [height, width, _NUM_MAPS])
-  target_geodesic_maps = tf.cast(example['target_geodesic_maps'],
-                                 tf.float32) / _UINT_16_FACTOR * _MAX_GEODESIC
-  target_geodesic_maps = tf.reshape(target_geodesic_maps,
-                                    [height, width, _NUM_MAPS])
-  source_geo_centers = example['source_geo_centers']
-  target_geo_centers = example['target_geo_centers']
+  source_geodesic_maps = source_geodesic_maps
+  target_geodesic_maps = target_geodesic_maps
+  source_geo_centers = source_geo_centers
+  target_geo_centers = target_geo_centers
+  source_geodesic_maps.set_shape(_DATA_MAP_SHAPE)
+  target_geodesic_maps.set_shape(_DATA_MAP_SHAPE)
+  source_geo_centers.set_shape(_DATA_CENTER_SHAPE)
+  target_geo_centers.set_shape(_DATA_CENTER_SHAPE)
   if 'low_resolution' in attributes:
     source_geodesic_maps = tf.image.resize(
-        source_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
+      source_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
     target_geodesic_maps = tf.image.resize(
-        target_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
-    source_geo_centers = source_geo_centers / (height / _LOW_RESOLUTION_SIZE[0])
-    target_geo_centers = target_geo_centers / (height / _LOW_RESOLUTION_SIZE[0])
+      target_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
+    source_geo_centers = source_geo_centers / height * _LOW_RESOLUTION_SIZE[0]
+    target_geo_centers = target_geo_centers / height * _LOW_RESOLUTION_SIZE[0]
 
   # Extract cross geodesic maps
-  source_cross_geodesic_maps = tf.cast(
-      example['source_cross_geodesic_maps'],
-      tf.float32) / _UINT_16_FACTOR * _MAX_GEODESIC
-  source_cross_geodesic_maps = tf.reshape(source_cross_geodesic_maps,
-                                          [height, width, _NUM_MAPS])
-
-  target_cross_geodesic_maps = tf.cast(
-      example['target_cross_geodesic_maps'],
-      tf.float32) / _UINT_16_FACTOR * _MAX_GEODESIC
-  target_cross_geodesic_maps = tf.reshape(target_cross_geodesic_maps,
-                                          [height, width, _NUM_MAPS])
-  source_cross_geo_centers = example['source_cross_geo_centers']
-  target_cross_geo_centers = example['target_cross_geo_centers']
+  source_cross_geodesic_maps = source_cross_geodesic_maps
+  target_cross_geodesic_maps = target_cross_geodesic_maps
+  source_cross_geo_centers = source_cross_geo_centers
+  target_cross_geo_centers = target_cross_geo_centers
+  source_cross_geodesic_maps.set_shape(_DATA_MAP_SHAPE)
+  target_cross_geodesic_maps.set_shape(_DATA_MAP_SHAPE)
+  source_cross_geo_centers.set_shape(_DATA_CENTER_SHAPE)
+  target_cross_geo_centers.set_shape(_DATA_CENTER_SHAPE)
   if 'low_resolution' in attributes:
     source_cross_geodesic_maps = tf.image.resize(
-        source_cross_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
+      source_cross_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
     target_cross_geodesic_maps = tf.image.resize(
-        target_cross_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
-    source_cross_geo_centers = source_cross_geo_centers / (
-        height / _LOW_RESOLUTION_SIZE[0])
-    target_cross_geo_centers = target_cross_geo_centers / (
-        height / _LOW_RESOLUTION_SIZE[0])
+      target_cross_geodesic_maps, _LOW_RESOLUTION_SIZE, method='nearest')
+    source_cross_geo_centers = source_cross_geo_centers / height * _LOW_RESOLUTION_SIZE[
+      0]
+    target_cross_geo_centers = target_cross_geo_centers / height * _LOW_RESOLUTION_SIZE[
+      0]
 
   # Extract geodesic matrix
-  source_geodesic_matrix = tf.cast(example['source_geodesic_matrix'],
-                                   tf.float32) / _UINT_16_FACTOR * _MAX_GEODESIC
-  target_geodesic_matrix = tf.cast(example['target_geodesic_matrix'],
-                                   tf.float32) / _UINT_16_FACTOR * _MAX_GEODESIC
-  source_geo_keypoints = example['source_geo_keypoints']
-  target_geo_keypoints = example['target_geo_keypoints']
+  source_geodesic_matrix = source_geodesic_matrix
+  target_geodesic_matrix = target_geodesic_matrix
+  source_geo_keypoints = source_geo_keypoints
+  target_geo_keypoints = target_geo_keypoints
+  source_geodesic_matrix.set_shape(_DATA_MATRIX_SHAPE)
+  target_geodesic_matrix.set_shape(_DATA_MATRIX_SHAPE)
+  source_geo_keypoints.set_shape(_DATA_KEYPOINT_SHAPE)
+  target_geo_keypoints.set_shape(_DATA_KEYPOINT_SHAPE)
   if 'low_resolution' in attributes:
-    source_geo_keypoints = source_geo_keypoints / (
-        height / _LOW_RESOLUTION_SIZE[0])
-    target_geo_keypoints = target_geo_keypoints / (
-        height / _LOW_RESOLUTION_SIZE[0])
+    source_geo_keypoints = source_geo_keypoints / height * _LOW_RESOLUTION_SIZE[
+      0]
+    target_geo_keypoints = target_geo_keypoints / height * _LOW_RESOLUTION_SIZE[
+      0]
 
   output_example['images'] = images
   output_example['flows'] = flows
@@ -207,7 +292,7 @@ def _preprocess(example: Dict[Text, tf.Tensor],
 
 
 def human_correspondence_dataset(
-    dataset_params: Dict[Text, Any]) -> tf.data.Dataset:
+  dataset_params: Dict[Text, Any]) -> tf.data.Dataset:
   """Load dense human correspondence dataset.
 
   Args:
@@ -217,63 +302,85 @@ def human_correspondence_dataset(
   Returns:
     dataset: tf.data.Dataset to train the model for dense human correspondence.
   """
-  dataset_proto_path = dataset_params['dataset_proto_path']
   attributes = dataset_params['attributes']
 
-  def parse_and_decode_fn(key, serialized_example):
-    decoded_features = dataset_loading.get_parse_and_decode_func(
-        *dataset_loading.parse_and_decode_info_from_proto(
-            filename=dataset_proto_path))(
-                serialized_example)
-    decoded_features['key'] = key
-    return decoded_features
+  def read_list(data_dir: str, filename_list: str = 'filename_list.txt'):
+    filename_list_path = os.path.join(data_dir, filename_list)
+    fp = open(filename_list_path, 'r')
+    line = fp.readline()
 
-  filenames_dataset = tf.data.Dataset.list_files(
-      dataset_params['data_path'], shuffle=dataset_params['is_training'])
-  dataset = filenames_dataset.interleave(
-      lambda item: tf.data.SSTableDataset(item).map(parse_and_decode_fn),
-      block_length=2,
-      num_parallel_calls=tf.data.AUTOTUNE)
-  dataset = dataset.map(
-      lambda x: _preprocess(x, attributes), num_parallel_calls=tf.data.AUTOTUNE)
+    filenames = []
+    while line:
+      filename = line.replace('\n', '')
+      filenames.append(filename)
+      line = fp.readline()
+    fp.close()
+    return filenames
+
+  if 'data_path' in dataset_params:
+    filenames = read_list(dataset_params['data_path'])
+    filenames_dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    if dataset_params['is_training']:
+      filenames_dataset = filenames_dataset.shuffle(
+          len(filenames), reshuffle_each_iteration=True)
+    dataset = filenames_dataset.map(
+        lambda x: tf_parse_function(x, dataset_params['data_path'], attributes),
+        num_parallel_calls=tf.data.AUTOTUNE)
+    dataset = dataset.batch(dataset_params['batch_size'], drop_remainder=True)
+
+  if 'smpl_intra_path' in dataset_params:
+    filenames = read_list(dataset_params['smpl_intra_path'])
+    filenames_dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    if dataset_params['is_training']:
+      filenames_dataset = filenames_dataset.shuffle(
+          len(filenames), reshuffle_each_iteration=True)
+    dataset = filenames_dataset.map(
+        lambda x: tf_parse_function(x, attributes),
+        num_parallel_calls=tf.data.AUTOTUNE)
+    dataset = dataset.batch(dataset_params['batch_size'], drop_remainder=True)
 
   if 'renderpeople_path' in dataset_params:
-    filenames_dataset = tf.data.Dataset.list_files(
-        dataset_params['renderpeople_path'],
-        shuffle=dataset_params['is_training'])
-    renderpeople_dataset = filenames_dataset.interleave(
-        lambda item: tf.data.SSTableDataset(item).map(parse_and_decode_fn),
-        block_length=2,
+    filenames = read_list(dataset_params['renderpeople_path'])
+    filenames_dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    if dataset_params['is_training']:
+      filenames_dataset = filenames_dataset.shuffle(
+          len(filenames), reshuffle_each_iteration=True)
+    renderpeople_dataset = filenames_dataset.map(
+        lambda x: tf_parse_function(x, attributes),
         num_parallel_calls=tf.data.AUTOTUNE)
-    renderpeople_attributes = attributes.copy()
-    renderpeople_dataset = renderpeople_dataset.map(
-        lambda x: _preprocess(x, renderpeople_attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+    renderpeople_dataset = renderpeople_dataset.batch(dataset_params['batch_size'], drop_remainder=True)
     datasets = [dataset, renderpeople_dataset]
-    dataset = tf.data.experimental.sample_from_datasets(datasets,
-                                                        _RATIO_SMPL_RP)
+    dataset = tf.data.experimental.sample_from_datasets(datasets, _RATIO_ADD_RP)
 
-  if 'holodeck_data_path' in dataset_params:
-    filenames_dataset = tf.data.Dataset.list_files(
-        dataset_params['holodeck_data_path'],
-        shuffle=dataset_params['is_training'])
-    holodeck_dataset = filenames_dataset.interleave(
-        lambda item: tf.data.SSTableDataset(item).map(parse_and_decode_fn),
-        block_length=2,
+  if 'holodeck_path' in dataset_params:
+    filenames = read_list(dataset_params['holodeck_path'])
+    filenames_dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    if dataset_params['is_training']:
+      filenames_dataset = filenames_dataset.shuffle(
+          len(filenames), reshuffle_each_iteration=True)
+    holodeck_dataset = filenames_dataset.map(
+        lambda x: tf_parse_function(x, attributes),
         num_parallel_calls=tf.data.AUTOTUNE)
-    holodeck_attributes = attributes.copy()
-    holodeck_attributes.append('has_no_geodesic')
-    holodeck_dataset = holodeck_dataset.map(
-        lambda x: _preprocess(x, holodeck_attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+    holodeck_dataset = holodeck_dataset.batch(dataset_params['batch_size'], drop_remainder=True)
     datasets = [dataset, holodeck_dataset]
-    dataset = tf.data.experimental.sample_from_datasets(datasets,
-                                                        _RATIO_RP_HOLODECK)
+    dataset = tf.data.experimental.sample_from_datasets(datasets, _RATIO_ADD_RP)
+
+  if 'smpl_inter_path' in dataset_params:
+    filenames = read_list(dataset_params['smpl_inter_path'])
+    filenames_dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    if dataset_params['is_training']:
+      filenames_dataset = filenames_dataset.shuffle(
+          len(filenames), reshuffle_each_iteration=True)
+    smpl_inter_dataset = filenames_dataset.map(
+        lambda x: tf_parse_function(x, attributes),
+        num_parallel_calls=tf.data.AUTOTUNE)
+    smpl_inter_dataset = smpl_inter_dataset.batch(dataset_params['batch_size'], drop_remainder=True)
+    datasets = [dataset, smpl_inter_dataset]
+    dataset = tf.data.experimental.sample_from_datasets(datasets, _RATIO_ADD_RP)
 
   if dataset_params['is_training']:
     dataset = dataset.map(augment_colors, num_parallel_calls=tf.data.AUTOTUNE)
 
-  dataset = dataset.batch(dataset_params['batch_size'], drop_remainder=True)
   dataset = dataset.prefetch(tf.data.AUTOTUNE)
 
   if dataset_params['is_training']:
@@ -306,3 +413,4 @@ def load_dataset(dataset_params: Dict[Text, Any]) -> tf.data.Dataset:
     raise Exception('Dataset: %s. is not provided' % dataset_params['dataset'])
 
   return dataset
+

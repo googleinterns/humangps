@@ -21,13 +21,12 @@ from absl import logging
 import gin.tf
 import tensorflow as tf
 
-from google3.vr.perception.deepholodeck.human_correspondence import dataset_lib
-from google3.vr.perception.deepholodeck.human_correspondence.deep_visual_descriptor.model import geodesic_feature_network
-from google3.vr.perception.deepholodeck.human_correspondence.optical_flow.pwcnet import pwcnet_lib
-from google3.vr.perception.deepholodeck.human_correspondence.optical_flow.raft import raft_lib
+import dataset_lib
+from deep_visual_descriptor.model import geodesic_feature_network
 
 Strategy = Union[tf.distribute.OneDeviceStrategy,
-                 tf.distribute.MirroredStrategy]
+                 tf.distribute.MirroredStrategy,
+                 tf.distribute.experimental.TPUStrategy]
 
 
 @enum.unique
@@ -35,6 +34,7 @@ class TrainingMode(enum.Enum):
   """Training mode used for strategy."""
   CPU = 'cpu'
   GPU = 'gpu'
+  TPU = 'tpu'
 
 
 class OneCycleLR(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -65,14 +65,14 @@ class OneCycleLR(tf.keras.optimizers.schedules.LearningRateSchedule):
     self._initial_learning_rate = initial_learning_rate
     self._maximal_learning_rate = maximal_learning_rate
     self._max_train_steps = max_train_steps
-    self._peak_steps = max_train_steps / 5
+    self._peak_steps = max_train_steps / 5.0
     self._start_steps = start_steps
     self._name = name
 
   def __call__(self, step):
     """Return the learning rate for current step."""
     with tf.name_scope(self._name):
-      step = step - self._start_steps
+      step = tf.cast(step, tf.float32) - self._start_steps
       increasing_lr = tf.math.maximum(
           self._initial_learning_rate + step / self._peak_steps *
           (self._maximal_learning_rate - self._initial_learning_rate),
@@ -105,7 +105,7 @@ def get_strategy(training_mode: TrainingMode) -> Strategy:
   if training_mode == TrainingMode.CPU:
     strategy = tf.distribute.OneDeviceStrategy('/cpu:0')
   elif training_mode == TrainingMode.GPU:
-    strategy = tf.distribute.MirroredStrategy()
+    strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
   else:
     raise ValueError('Unsupported distributed mode.')
   return strategy
@@ -224,7 +224,6 @@ def train_loop(strategy: Strategy,
     checkpoint_save_every_n_hours: The frequency in hours to keep checkpoints.
     timing_frequency: The iteration frequency with which to log timing.
   """
-  logging.info('Creating summaries ...')
   summary_writer = tf.summary.create_file_writer(base_folder)
   summary_writer.set_as_default()
 
@@ -291,6 +290,10 @@ def train_loop(strategy: Strategy,
           steps_per_second = elapsed_steps / elapsed_time
           tf.summary.scalar(
               'steps/sec', steps_per_second, step=optimizer.iterations)
+          tf.summary.scalar(
+              'learn_rate',
+              optimizer.learning_rate(optimizer.iterations),
+              step=optimizer.iterations)
 
     # Increment epoch.
     checkpoint.epoch.assign_add(1)
@@ -310,10 +313,6 @@ def get_training_elements(
   if model_component == 'GeoFeatureNet':
     create_model_fn = functools.partial(geodesic_feature_network.GeoFeatureNet,
                                         model_hparams)
-  elif model_component == 'PWCNet':
-    create_model_fn = functools.partial(pwcnet_lib.PWCNet, model_hparams)
-  elif model_component == 'RAFT':
-    create_model_fn = functools.partial(raft_lib.RAFT, model_hparams)
   else:
     raise ValueError('Unknown model_component: %s' % model_component)
 
@@ -327,7 +326,7 @@ def get_training_optimizer(
   if 'piecewise_lr' in lr_params:
     learning_rate = lr_params['piecewise_lr']['learning_rate']
     start_steps = lr_params['piecewise_lr']['start_steps']
-    boundaries = [100000 * i + start_steps for i in range(2, 7)]
+    boundaries = [200000 * i + start_steps for i in range(2, 7)]
     values = [learning_rate * pow(1.25, -i) for i in range(6)]
     lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
         boundaries, values, name=None)
@@ -366,7 +365,7 @@ def train_pipeline(training_mode: str,
   """A training function that is strategy agnostic.
 
   Args:
-    training_mode: Distributed strategy approach, one from 'cpu', 'gpu'.
+    training_mode: Distributed strategy approach, one from 'cpu', 'gpu', 'tpu'.
     base_folder: A CNS path to where the summaries event files and checkpoints
       will be saved.
     dataset_params: Dict to describe dataset parameters.
@@ -446,7 +445,7 @@ def eval_pipeline(eval_mode: str, dataset_params: Dict[str, Any],
   """A eval function that is strategy agnostic.
 
   Args:
-    eval_mode: Distributed strategy approach, one from 'cpu', 'gpu'.
+    eval_mode: Distributed strategy approach, one from 'cpu', 'gpu', 'tpu'.
     dataset_params: Dictionary of files that make up the dataset for
       experiments.
     train_base_folder: A CNS path to where the training checkpoints will be
@@ -534,4 +533,78 @@ def eval_pipeline(eval_mode: str, dataset_params: Dict[str, Any],
     eval_record['histogram_summaries'] = distributed_step_outputs[
         'histogram_summaries']
 
+    for key in eval_record['scalar_summaries']:
+      print('%s: %f' % (key, eval_record['scalar_summaries'][key]))
+
     _summary_writer(eval_record, step=checkpoint.step)
+
+
+@gin.configurable
+def inference_pipeline(eval_mode: str, dataset_params: Dict[str, Any],
+                  checkpoint_path: str, batch_size: int, eval_name: str):
+  """A eval function that is strategy agnostic.
+
+  Args:
+    eval_mode: Distributed strategy approach, one from 'cpu', 'gpu'.
+    dataset_params: Dictionary of files that make up the dataset for
+      experiments.
+    checkpoint_path: A path to where the training checkpoints will be
+      loaded.
+    batch_size: An integer, the batch size.
+    eval_name: The experiment name.
+  """
+  strategy = get_strategy(TrainingMode(eval_mode))
+
+  logging.info('Loading testing data ...')
+
+  # Sets model configuration parameters
+  dataset_params = dataset_params[eval_name]
+  dataset_params['batch_size'] = batch_size
+  test_set = dataset_lib.load_dataset(dataset_params)
+
+  test_set = strategy.experimental_distribute_dataset(test_set)
+
+  create_model_fn = get_training_elements(
+      model_component=gin.REQUIRED, model_hparams=gin.REQUIRED)
+
+  with strategy.scope():
+    logging.info('Building model ...')
+    model = create_model_fn()
+
+  checkpoint = tf.train.Checkpoint(
+      model=model,
+      step=tf.Variable(-1, dtype=tf.int64),
+      training_finished=tf.Variable(False, dtype=tf.bool),
+  )
+
+  status = checkpoint.restore(checkpoint_path)
+  status.assert_existing_objects_matched()
+  status.expect_partial()
+
+  logging.info('Restoring checkpoint %s @ step %d.', checkpoint_path,
+               checkpoint.step)
+
+  logging.info('Evaluating ...')
+
+  eval_record = {}
+  eval_batch_scalar = {}
+
+  for i_batch, batch in enumerate(test_set):
+    logging.info('i_batch %d', i_batch)
+    distributed_step_outputs = _distributed_eval_step(strategy, batch, model)
+
+    for key, scalar in distributed_step_outputs['scalar_summaries'].items():
+      if key in eval_batch_scalar:
+        eval_batch_scalar[key].append(scalar)
+      else:
+        eval_batch_scalar[key] = [scalar]
+    if i_batch > 20:
+      break
+
+  eval_record['scalar_summaries'] = {}
+  for key, record in eval_batch_scalar.items():
+    eval_record['scalar_summaries'][key] = tf.reduce_mean(record)
+
+  for key in eval_record['scalar_summaries']:
+    print('%s: %f' % (key, eval_record['scalar_summaries'][key]))
+

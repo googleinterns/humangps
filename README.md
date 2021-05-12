@@ -1,3 +1,11 @@
-The project is to find dense human correspondence across 2D images. which is rather useful for various human-specific applications including non-rigid tracking and reconstruction, neural rendering and appearance transfer. The idea is to utilize  geodesic distance as an effective supervision, together with novel loss functions to learn a deep feature, which can then be used to find pixel correspondences between images of same/different subjects.
+# HumanGPS (CVPR2021)
+Official source code of paper HumanGPS: Geodesic PreServing Feature for Dense Human Correspondences, [arxiv](https://arxiv.org/pdf/2103.15573.pdf)
 
-This is not an officially supported Google product.
+# Installation
+## Requirements
+* python 3.8
+* TensorFlow 2.4
+
+```
+conda install -c sandeepgadhwal tensorflow-addons
+```

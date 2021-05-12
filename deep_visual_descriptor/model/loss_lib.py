@@ -17,16 +17,17 @@ from typing import Any, Dict, Sequence
 
 import tensorflow as tf
 
-from google3.vr.perception.deepholodeck.human_correspondence.deep_visual_descriptor import utils_lib as descriptor_utils
-from google3.vr.perception.deepholodeck.human_correspondence.optical_flow import utils_lib as flow_utils
+from deep_visual_descriptor import utils_lib as descriptor_utils
+from optical_flow import utils_lib as flow_utils
 
 _EPSILON = 1e-12
-_M = 1.0
-_TAU = 0.2
+_CORR_TAU = 0.05
+_TRIPLET_TAU = 0.20
 _ALPHA = 6.0
-_BETA = 3.0
-_GEODESIC_THRESHOLD = 0.05
-_LEVEL_RANGE = 4
+_BETA = 0.5
+_TRIPLET_GEODESIC_THRESHOLD = 0.15
+_DENSE_GEODESIC_THRESHOLD = 0.15
+_LEVEL_RANGE = 3
 _SIZE_COORDS = (384, 256)
 
 
@@ -45,16 +46,18 @@ class GeodesicFeatureLoss:
     # Pre-defined hyperparameters
     # Set weight for multi-scale loss.
     self._weight = [
-        1.0, 0.25, 0.125, 0.0125, 0.00625, 0.00625, 0.00625, 0.00625
+        1.0, 0.125, 0.0625, 0.0125, 0.00625, 0.00625, 0.00625, 0.00625
     ]
     # Hyperparameters in computing threholded hinged triplet loss
-    self._m = _M
-    self._tau = _TAU
+    self._corr_tau = _CORR_TAU
+    self._triplet_tau = _TRIPLET_TAU
+
     # Hyperparameters to control the slope of the gradient from dense geodesic
     # loss.
     self._alpha = _ALPHA
     self._beta = _BETA
-    self._geodesic_threhold = _GEODESIC_THRESHOLD
+    self._triplet_geodesic_threshold = _TRIPLET_GEODESIC_THRESHOLD
+    self._dense_geodesic_threshold = _DENSE_GEODESIC_THRESHOLD
 
     # Define the levels of feature pyramid will be considered in computing
     # losses.
@@ -132,6 +135,8 @@ class GeodesicFeatureLoss:
           sampled_source_feature * sampled_target_feature,
           axis=-1,
           keepdims=True))
+      zeros = tf.zeros_like(feature_distance)
+      loss = tf.maximum(zeros, feature_distance - self._corr_tau)
       loss = tf.math.divide_no_nan(
           tf.reduce_sum(feature_distance * flow_mask), tf.reduce_sum(flow_mask))
       loss = loss * self._weight[i]
@@ -158,7 +163,7 @@ class GeodesicFeatureLoss:
       geodesic_maps: A tensor of size B x H x W x N, where B is the number of
         batch size, H x W is the original image size, N is the number of the
         sampled pixels.
-      geodesic_mask: Ground-truth foreground mask of size B x H x W x 1,
+      geodesic_mask: Ground-truth foreground mask of size B x N x H x W,
         indicating foreground pixels of source image.
 
     Returns:
@@ -167,10 +172,12 @@ class GeodesicFeatureLoss:
     batch_size, num_center = geodesic_centers.get_shape().as_list()[:2]
 
     # Generate pixel range over [0..w/h-1].
-    xy_coords = flow_utils.coords_grid(batch_size, self._height_coords,
-                                       self._width_coords)
+    zero_flow = tf.zeros(
+        (batch_size, self._height_coords, self._width_coords, 2),
+        dtype=tf.float32)
+
     geodesic_maps = tf.transpose(geodesic_maps, [0, 3, 1, 2])[..., tf.newaxis]
-    geodesic_mask = geodesic_mask[:, tf.newaxis, :, :, :]
+    geodesic_mask = geodesic_mask[:, :, :, :, tf.newaxis]
 
     losses = []
     for level, (source_feature, target_feature) in enumerate(
@@ -183,17 +190,23 @@ class GeodesicFeatureLoss:
       )
       dense_feature_map = descriptor_utils.dense_bilinear_sample(
           target_feature,
-          xy_coords,
+          zero_flow,
       )
 
       center_feature = center_feature[:, :, tf.newaxis, tf.newaxis, :]
       dense_feature_map = dense_feature_map[:, tf.newaxis, :, :, :]
       distance = 1 - tf.reduce_sum(
           center_feature * dense_feature_map, axis=-1, keepdims=True)
+      ones = tf.ones_like(distance)
+      distance = tf.minimum(ones, distance + self._dense_geodesic_threshold * 3)
 
       loss = tf.math.log(1 +
-                         tf.math.exp((geodesic_maps - distance) * self._alpha -
-                                     self._beta))
+                         tf.math.exp((geodesic_maps - distance - self._beta) *
+                                     self._alpha))
+
+      loss = tf.where(geodesic_maps > self._dense_geodesic_threshold, loss,
+                      loss / 10.0)
+
       loss = tf.math.divide_no_nan(
           tf.reduce_sum(loss * geodesic_mask),
           tf.reduce_sum(geodesic_mask * num_center))
@@ -221,8 +234,7 @@ class GeodesicFeatureLoss:
       Dense geodesic loss from a single view.
     """
     geodesic_mask = tf.cast(
-        tf.reduce_sum(geodesic_maps, axis=-1, keepdims=True) >
-        self._geodesic_threhold, tf.float32)
+        tf.transpose(geodesic_maps, [0, 3, 1, 2]) > _EPSILON, tf.float32)
 
     return self.compute_dense_geodesic_loss(feature_pyramid, feature_pyramid,
                                             geodesic_centers, geodesic_maps,
@@ -252,18 +264,17 @@ class GeodesicFeatureLoss:
       Cross-view dense geodesic loss from cross views.
     """
     geodesic_mask = tf.cast(
-        tf.reduce_sum(cross_geodesic_maps, axis=-1, keepdims=True) > 1e-12,
-        tf.float32)
+        tf.transpose(cross_geodesic_maps, [0, 3, 1, 2]) > _EPSILON, tf.float32)
 
     return self.compute_dense_geodesic_loss(source_feature_pyramid,
                                             target_feature_pyramid,
                                             cross_geodesic_centers,
                                             cross_geodesic_maps, geodesic_mask)
 
-  def get_geodesic_matrix_loss(self, feature_pyramid: Sequence[tf.Tensor],
-                               geodesic_coords: tf.Tensor,
-                               geodesic_matrix: tf.Tensor) -> tf.Tensor:
-    """Computes cross-view dense geodesic loss.
+  def get_sparse_ordinal_loss(self, feature_pyramid: Sequence[tf.Tensor],
+                              geodesic_coords: tf.Tensor,
+                              geodesic_matrix: tf.Tensor) -> tf.Tensor:
+    """Computes sparse ordinal geodesic loss.
 
     Args:
       feature_pyramid: A list of L tensors. For each tensor, the size is [B,
@@ -335,9 +346,10 @@ class GeodesicFeatureLoss:
       distance2 = 1 - tf.reduce_sum(
           target_feature * source_feature2, axis=-1, keepdims=True)
 
-      loss = tf.math.log(1 + tf.math.exp(
-          (relative_flags * distance1 - relative_flags * distance2) *
-          self._alpha - self._beta))
+      loss = tf.math.log(1 +
+                         tf.math.exp((relative_flags * distance1 -
+                                      relative_flags * distance2 - self._beta) *
+                                     self._alpha))
 
       mask = tf.math.logical_and(tgt_src_geodesic1 > _EPSILON,
                                  tgt_src_geodesic2 > _EPSILON)
@@ -378,9 +390,9 @@ class GeodesicFeatureLoss:
         tf.reduce_sum(
             tf.square(reference_feature - positive_feature),
             axis=-1,
-            keepdims=True) - self._tau)
+            keepdims=True) - self._triplet_tau)
     negative_loss = tf.maximum(
-        zeros, self._m + self._tau - tf.reduce_sum(
+        zeros, 1 - self._triplet_tau - tf.reduce_sum(
             tf.square(reference_feature - negative_feature),
             axis=-1,
             keepdims=True))
@@ -390,7 +402,8 @@ class GeodesicFeatureLoss:
 
   def get_triplet_loss(self, source_feature_pyramid: Sequence[tf.Tensor],
                        target_feature_pyramid: Sequence[tf.Tensor],
-                       source_geodesic_coords: tf.Tensor, flow_gt: tf.Tensor,
+                       source_geodesic_coords: tf.Tensor,
+                       source_geodesic_matrix: tf.Tensor, flow_gt: tf.Tensor,
                        flow_mask: tf.Tensor) -> tf.Tensor:
     """Computes triplet loss between source and target feature pyramid.
 
@@ -404,6 +417,8 @@ class GeodesicFeatureLoss:
       source_geodesic_coords: A tensor of size B x N x 2, where B is the number
         of batch size, N is the number of the sampled center pixels in source
         view.
+      source_geodesic_matrix: A tensor of size [B, N/2, N/2, 1], where B is the
+        number of batch size, N is the number of the sampled pixels.
       flow_gt: Ground-truth optical flow of size B x H x W x 2, where B is the
         number of batch size, H x W is the size of ground-truth optical flow.
       flow_mask: Ground-truth flow mask of size B x H x W x 1, which indicates
@@ -413,15 +428,22 @@ class GeodesicFeatureLoss:
       Triplet loss.
     """
     batch_size, num_sample = source_geodesic_coords.get_shape().as_list()[:2]
-
     half_num_sample = num_sample // 2
-    flow_mask = tf.cast(flow_mask, dtype=tf.float32)
     reference_idxs = tf.range(half_num_sample)
     negative_idxs = tf.random.shuffle(reference_idxs) + half_num_sample
+    reference_idxs = tf.tile(reference_idxs[tf.newaxis, ...], [batch_size, 1])
     negative_idxs = tf.tile(negative_idxs[tf.newaxis, ...], [batch_size, 1])
     reference_coords = source_geodesic_coords[:, :half_num_sample]
     negative_coords = tf.gather(
         source_geodesic_coords, negative_idxs, axis=1, batch_dims=1)
+
+    ref_neg_matrix_indices = tf.stack(
+        [reference_idxs, negative_idxs - half_num_sample], axis=-1)
+    ref_neg_geodesic = tf.gather_nd(
+        source_geodesic_matrix, ref_neg_matrix_indices, batch_dims=1)
+
+    geodesic_mask = ref_neg_geodesic > self._triplet_geodesic_threshold
+    flow_mask = tf.cast(flow_mask, dtype=tf.float32)
 
     reference_mask = descriptor_utils.sparse_bilinear_sample(
         flow_mask,
@@ -429,6 +451,8 @@ class GeodesicFeatureLoss:
         height_coords=self._height_coords,
         width_coords=self._width_coords,
     )
+
+    reference_mask = reference_mask * tf.cast(geodesic_mask, dtype=tf.float32)
     reference_flow = descriptor_utils.sparse_bilinear_sample(
         flow_gt,
         reference_coords,
@@ -499,20 +523,25 @@ class GeodesicFeatureLoss:
                                                        1):-1]
     target_feature_pyramid = target_feature_pyramid[:-(self._level_range +
                                                        1):-1]
+
     flow_gt = input_batch['flows']
     flow_mask = tf.cast(input_batch['flow_mask'], tf.float32)
     loss_summaries = {}
     if 'correspondence_loss_weight' in self._loss_hparams:
       correspondence_loss = self.get_intra_consistency_loss(
           source_feature_pyramid, target_feature_pyramid, flow_gt, flow_mask)
+      print(flow_gt.shape)
+      print(flow_mask.shape)
 
       loss_summaries['correspondence_loss'] = correspondence_loss
 
     if 'triplet_loss_weight' in self._loss_hparams:
       source_geodesic_coords = input_batch['source_geo_keypoints']
+      source_geodesic_matrix = input_batch['source_geodesic_matrix']
       triplet_loss = self.get_triplet_loss(source_feature_pyramid,
                                            target_feature_pyramid,
-                                           source_geodesic_coords, flow_gt,
+                                           source_geodesic_coords,
+                                           source_geodesic_matrix, flow_gt,
                                            flow_mask)
 
       loss_summaries['triplet_loss'] = triplet_loss
@@ -530,8 +559,8 @@ class GeodesicFeatureLoss:
 
       dense_geodesic_loss = (source_dense_geodesic_loss +
                              target_dense_geodesic_loss) / 2
-      dense_geodesic_loss = tf.cond(input_batch['has_no_geodesic'][0],
-                                    lambda: 0.0, lambda: dense_geodesic_loss)
+      dense_geodesic_loss = tf.cond(input_batch['has_no_geodesic'][0], lambda: 0.0,
+                                    lambda: dense_geodesic_loss)
       loss_summaries['dense_geodesic_loss'] = dense_geodesic_loss
 
     if ('cross_dense_geodesic_loss_weight' in self._loss_hparams) and (
@@ -550,7 +579,7 @@ class GeodesicFeatureLoss:
 
       cross_dense_geodesic_loss = (source_cross_dense_geodesic_loss +
                                    target_cross_dense_geodesic_loss) / 2
-      cross_dense_geodesic_loss = tf.cond(input_batch['has_no_geodesic'],
+      cross_dense_geodesic_loss = tf.cond(input_batch['has_no_geodesic'][0],
                                           lambda: 0.0,
                                           lambda: cross_dense_geodesic_loss)
       loss_summaries['cross_dense_geodesic_loss'] = cross_dense_geodesic_loss
@@ -561,17 +590,17 @@ class GeodesicFeatureLoss:
       source_geodesic_matrix = input_batch['source_geodesic_matrix']
       target_geodesic_matrix = input_batch['target_geodesic_matrix']
 
-      source_sparse_ordinal_geodesic_loss = self.get_geodesic_matrix_loss(
+      source_sparse_ordinal_geodesic_loss = self.get_sparse_ordinal_loss(
           source_feature_pyramid, source_geodesic_coords,
           source_geodesic_matrix)
-      target_sparse_ordinal_geodesic_loss = self.get_geodesic_matrix_loss(
+      target_sparse_ordinal_geodesic_loss = self.get_sparse_ordinal_loss(
           target_feature_pyramid, target_geodesic_coords,
           target_geodesic_matrix)
 
       sparse_ordinal_geodesic_loss = (source_sparse_ordinal_geodesic_loss +
                                       target_sparse_ordinal_geodesic_loss) / 2
       sparse_ordinal_geodesic_loss = tf.cond(
-          input_batch['has_no_geodesic'], lambda: 0.0,
+          input_batch['has_no_geodesic'][0], lambda: 0.0,
           lambda: sparse_ordinal_geodesic_loss)
       loss_summaries[
           'sparse_ordinal_geodesic_loss'] = sparse_ordinal_geodesic_loss

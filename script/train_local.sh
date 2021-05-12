@@ -14,30 +14,20 @@
 # limitations under the License.
 
 
-source gbash.sh || exit
+MODE="cpu" # Training mode.
+BASE_FOLDER="/usr/local/google/home/feitongtan/Documents/tmp" # Folder to save log and checkpoint.
+MODEL_GIN="./gin_config/model_config.gin" # Gin configuration for model.
+DATA_GIN="./gin_config/data_config.gin" # Gin configuration for data.
+TRAIN_EVAL_GIN="./gin_config/train_eval_config_local.gin" # Gin configuration for train_eval.
 
-DEFINE_string mode "gpu" "Training mode."
-DEFINE_string base_folder "/tmp/test01/" "Folder to save log and checkpoint."
-DEFINE_string model_gin "./gin_config/model_config.gin" "Gin configuration for model."
-DEFINE_string data_gin "./gin_config/data_config.gin" "Gin configuration for data."
-DEFINE_string train_eval_gin "./gin_config/train_eval_config_local.gin" "Gin configuration for train_eval."
 # Exit if anything fails.
 set -e
+mkdir -p "$BASE_FOLDER"
+mkdir -p "$BASE_FOLDER/gin_config"
 
+cp -f "${MODEL_GIN}" "$BASE_FOLDER/gin_config"
+cp -f "${DATA_GIN}" "$BASE_FOLDER/gin_config"
+cp -f "${TRAIN_EVAL_GIN}" "$BASE_FOLDER/gin_config"
 
-fileutil mkdir -p "$FLAGS_base_folder"
-fileutil mkdir -p "$FLAGS_base_folder/gin_config"
-
-fileutil cp -f "${FLAGS_model_gin}" "$FLAGS_base_folder/gin_config"
-fileutil cp -f "${FLAGS_data_gin}" "$FLAGS_base_folder/gin_config"
-fileutil cp -f "${FLAGS_train_eval_gin}" "$FLAGS_base_folder/gin_config"
-
-bazel run -c opt --copt=-mavx --define cuda_target_sm75=1 --config=cuda \
-  train_main_local -- \
-  --base_folder="$FLAGS_base_folder" \
-  --mode="$FLAGS_mode" \
-  --gin_configs="${FLAGS_model_gin}" \
-  --gin_configs="${FLAGS_data_gin}" \
-  --gin_configs="${FLAGS_train_eval_gin}" \
-  --gfs_user=vr-beaming \
-  --alsologtostderr
+echo "python train_main_local.py --base_folder "$BASE_FOLDER" --mode "$MODE" --gin_configs "${MODEL_GIN}" --gin_configs "${DATA_GIN}" --gin_configs "${TRAIN_EVAL_GIN}""
+#python train_main_local.py --base_folder "$BASE_FOLDER" --mode="$FLAGS_mode" --gin_configs="${FLAGS_model_gin}" --gin_configs="${FLAGS_data_gin}" --gin_configs="${FLAGS_train_eval_gin}"

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A training framework using distributed strategy."""
+"""A evaluation framework using distributed strategy."""
 import os
 
 from absl import app
@@ -23,7 +23,8 @@ import train_eval_lib_local
 
 flags.DEFINE_enum('mode', None, ['cpu', 'gpu'],
                   'Distributed strategy approach.')
-flags.DEFINE_string('base_folder', None, 'Path to checkpoints/summaries.')
+flags.DEFINE_string('checkpoint_path', None, 'Path to checkpoints.')
+flags.DEFINE_string('job_name', '', 'Name of the job.')
 flags.DEFINE_multi_string('gin_bindings', None, 'Gin parameter bindings.')
 flags.DEFINE_multi_string('gin_configs', None, 'Gin config files.')
 
@@ -38,19 +39,14 @@ def main(argv):
       bindings=FLAGS.gin_bindings,
       skip_unknown=True)
 
-  base_folder = FLAGS.base_folder
-  base_folder = os.path.join(base_folder, 'train')
-  train_eval_lib_local.train_pipeline(
-      training_mode=FLAGS.mode,
-      base_folder=base_folder,
+  train_eval_lib_local.inference_pipeline(
+      eval_mode=FLAGS.mode,
       dataset_params=gin.REQUIRED,
-      lr_params=gin.REQUIRED,
+      checkpoint_path=FLAGS.checkpoint_path,
       batch_size=gin.REQUIRED,
-      n_iterations=gin.REQUIRED)
+      eval_name=FLAGS.job_name)
 
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('mode')
-  flags.mark_flag_as_required('base_folder')
-  flags.mark_flag_as_required('gin_configs')
   app.run(main)

@@ -17,9 +17,12 @@
 from typing import Tuple
 
 import tensorflow as tf
+import tensorflow_addons as tfa
 
-from google3.vr.perception.deepholodeck.human_correspondence.optical_flow import utils_lib
-from google3.research.vision.piedpiper.brain.python.ops import flow_ops
+from optical_flow import utils_lib
+
+_FLOW_THRESHOLD = 1e7
+_M_PI = 3.14159265358979323846
 
 
 def compute_l2_distance_matrix(
@@ -249,7 +252,7 @@ def sparse_bilinear_sample(image: tf.Tensor,
 
   x_coords = x_coords * tf.cast(width_image, tf.float32) / width_coords
   y_coords = y_coords * tf.cast(height_image, tf.float32) / height_coords
-  output = flow_ops.bilinear_sample(image, x_coords, y_coords, pad_mode)
+  output = bilinear_sample(image, x_coords, y_coords, pad_mode)
 
   return output
 
@@ -297,6 +300,132 @@ def dense_bilinear_sample(image: tf.Tensor,
       width_flow, tf.float32)
   y_coords = y_coords * tf.cast(height_image, tf.float32) / tf.cast(
       height_flow, tf.float32)
-  output = flow_ops.bilinear_sample(image, x_coords, y_coords, pad_mode)
+  output = bilinear_sample(image, x_coords, y_coords, pad_mode)
 
+  return output
+
+
+def create_flow_image(flow, saturate_magnitude=10):
+  """Returns an image that visualizes the given flow field.
+
+  Args:
+    flow: A tensor with shape [b, h, w, 2] holding the <u, v> flow field using
+      pixel-space coordinates.
+    saturate_magnitude: Sets the magnitude of motion (in pixels) at which the
+      color code saturates. A negative value is replaced with the maximum
+      magnitude in the optical flow field. (See tf.image.optical_flow_to_hsv).
+
+  Returns:
+    An image visualizing the flow field (RGB with pixel values in [0..255]).
+  """
+  x_flow, y_flow = tf.split(flow, [1, 1], axis=-1)
+  invalid_mask = tf.logical_or(
+      tf.abs(x_flow) > _FLOW_THRESHOLD,
+      tf.abs(y_flow) > _FLOW_THRESHOLD)
+  x_flow = tf.where(invalid_mask, tf.zeros_like(x_flow), x_flow)
+  y_flow = tf.where(invalid_mask, tf.zeros_like(y_flow), y_flow)
+
+  flow_magnitude = tf.sqrt(x_flow**2 + y_flow**2)
+
+  max_flow_magnitude = tf.ones_like(
+      flow_magnitude, dtype=tf.float32) * tf.math.reduce_max(
+          flow_magnitude, axis=[1, 2, 3], keepdims=True)
+  saturate_magnitude = tf.ones_like(
+      flow_magnitude, dtype=tf.float32) * saturate_magnitude
+  saturate_magnitude = tf.where(saturate_magnitude < 0.0, max_flow_magnitude,
+                                saturate_magnitude)
+  flow_angle = tf.math.atan2(y_flow, x_flow)
+  flow_angle = tf.where(flow_angle < 0.0, flow_angle + 2 * _M_PI, flow_angle)
+
+  hsv_0 = flow_angle / (2 * _M_PI)
+  hsv_1 = tf.minimum(flow_magnitude / saturate_magnitude, 1.0)
+  hsv_2 = tf.ones_like(hsv_0)
+  hsv = tf.concat([hsv_0, hsv_1, hsv_2], axis=-1)
+  img = tf.image.hsv_to_rgb(hsv)
+  img = img * 255  # output of hsv_to_rgb is [0,1] so scale to [0,255]
+  return img
+
+
+def bilinear_warp(img, flow, pad_mode='EDGE'):
+  """Perform bilinear warping on `img` using the given `flow` field.
+
+  This function warps `img` given pixel offsets (the `flow` field). The flow
+  field is interpreted as reverse flow, i.e. for every pixel location in the new
+  (warped) image, `flow` specifies the <x,y> offset for the pixel in `img`. For
+  example, to shift `img` one pixel to the right, all x-offsets in `flow` should
+  be -1.
+
+  Args:
+    img: A tensor of size [batch_size, height, width, channels], representing
+      the input image.
+    flow: A tensor of size [batch_size, height, width, 2], representing the
+      horizontal and vertical offset for the flow.
+    pad_mode: The padding mode: either "EDGE" or "ZERO".
+
+  Returns:
+    output: A tensor of size [batch_size, height, width, channels] holding the
+      warped image.
+  """
+  img = tf.convert_to_tensor(img)
+  flow = tf.convert_to_tensor(flow)
+
+  shape = tf.shape(img)
+  h, w = shape[1], shape[2]
+
+  # Generate pixel range over [0..w/h-1].
+  x = tf.cast(tf.range(w), tf.float32)
+  y = tf.cast(tf.range(h), tf.float32)
+
+  # Reshape ranges to allow broadcasting.
+  x = tf.reshape(x, [1, 1, w, 1])
+  y = tf.reshape(y, [1, h, 1, 1])
+
+  # Resample coordinates are sum of mesh and <u, v> flow field.
+  u, v = tf.split(flow, [1, 1], axis=-1)
+  x += u
+  y += v
+
+  return bilinear_sample(img, x, y, pad_mode)
+
+
+def bilinear_sample(img, x, y=None, pad_mode='EDGE'):
+  """Perform bilinear resampling on `img` given (`x`, `y`) coordinates.
+
+  This function samples `img` given real-valued locations (`x`, `y`) in
+  pixel-space. Contrast with bilinear_warp(), which warps an image given a flow
+  field that holds offsets instead of absolute pixel locations.
+
+  Args:
+    img: A tensor of size [batch_size, height, width, channels], representing
+      the input image.
+    x: A tensor of size [batch_size, height, width, 1], representing the x
+      coordinates (in pixel-space [0..w-1]) to sample. If `y` is None, `x` is
+      interpreted as a flow field with both channels (shape = [b, h, w, 2]).
+    y: A tensor of size [batch_size, height, width, 1], representing the y
+      coordinates (in pixel-space [0..h-1]) to sample.
+    pad_mode: The padding mode: either "EDGE" or "ZERO".
+
+  Returns:
+    output: A tensor of size [batch_size, height, width, channels], holding the
+      interpolated image.
+  """
+  img = tf.convert_to_tensor(img)
+
+  if pad_mode == 'EDGE':
+    if y is None:
+      # Must split and recombine since max value is different for x and y.
+      x, y = tf.split(x, [1, 1], axis=-1)
+    shape = tf.shape(img)
+    h, w = shape[-3], shape[-2]
+    x = tf.clip_by_value(x, 0, tf.cast(w - 1, tf.float32))
+    y = tf.clip_by_value(y, 0, tf.cast(h - 1, tf.float32))
+  elif pad_mode != 'ZERO':
+    raise ValueError(
+        'Invalid pad_mode `{}`, should either be `EDGE` or `ZERO`.'.format(
+            pad_mode))
+  warp = x if y is None else tf.concat([x, y], axis=-1)
+  warp_shape = tuple(warp.get_shape().as_list())
+  warp = tf.reshape(warp, (warp_shape[0], -1, 2))
+  output = tfa.image.interpolate_bilinear(img, warp, indexing='xy')
+  output = tf.reshape(output, warp_shape[:-1] + (-1,))
   return output
