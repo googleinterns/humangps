@@ -34,7 +34,6 @@ class TrainingMode(enum.Enum):
   """Training mode used for strategy."""
   CPU = 'cpu'
   GPU = 'gpu'
-  TPU = 'tpu'
 
 
 class OneCycleLR(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -213,7 +212,7 @@ def train_loop(strategy: Strategy,
       tf.keras.optimizers.Optimizer.
     global_batch_size: The global batch size, typically used to scale losses in
       distributed_train_step_fn.
-    base_folder: A CNS path to where the summaries event files and checkpoints
+    base_folder: A path to where the summaries event files and checkpoints
       will be saved.
     num_iterations: An integer, the number of iterations to train for.
     save_summaries_frequency: The iteration frequency with which summaries are
@@ -365,8 +364,8 @@ def train_pipeline(training_mode: str,
   """A training function that is strategy agnostic.
 
   Args:
-    training_mode: Distributed strategy approach, one from 'cpu', 'gpu', 'tpu'.
-    base_folder: A CNS path to where the summaries event files and checkpoints
+    training_mode: Distributed strategy approach, one from 'cpu', 'gpu'.
+    base_folder: A path to where the summaries event files and checkpoints
       will be saved.
     dataset_params: Dict to describe dataset parameters.
     lr_params: Dict to describe learning rate schedule parameters.
@@ -445,12 +444,12 @@ def eval_pipeline(eval_mode: str, dataset_params: Dict[str, Any],
   """A eval function that is strategy agnostic.
 
   Args:
-    eval_mode: Distributed strategy approach, one from 'cpu', 'gpu', 'tpu'.
+    eval_mode: Distributed strategy approach, one from 'cpu', 'gpu'.
     dataset_params: Dictionary of files that make up the dataset for
       experiments.
-    train_base_folder: A CNS path to where the training checkpoints will be
+    train_base_folder: A path to where the training checkpoints will be
       loaded.
-    eval_base_folder: A CNS path to where the evaluation summaries event files
+    eval_base_folder: A path to where the evaluation summaries event files
       will be saved.
     batch_size: An integer, the batch size.
     eval_name: The experiment name.

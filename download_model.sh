@@ -1,5 +1,5 @@
 mkdir -p checkpoint
 cd checkpoint
-wget
-unzip
+gdown https://drive.google.com/u/1/uc?id=1uXdgdk-37XITLeTK5r3uXpc6Uq-GQ5jh
+unzip checkpoint.zip
 cd ..
