@@ -32,10 +32,10 @@ bash download_model.sh
 (a) Run
 
 ```sh
-bash download_intra_data.sh
+mkdir -p ./test_data/smpl_intra_test/
 ```
 
-to get our smpl intra test dataset.
+Download our SMPL intra test data from [smpl_intra_data](https://www.icloud.com/iclouddrive/0UmpxsQ3btifW8F67ENT6chng#smpl%5Fintra%5Ftest) in `./test_data/smpl_intra_test/`
 
 To evaluate average epe on intra test dataset.
 
@@ -47,19 +47,18 @@ To evaluate average epe on intra test dataset.
 bash ./script/inference_local.sh
 ```
 
-### 3. Evaluate on inter testing data. (Testing data will be uploaded soon)
+### 3. Evaluate on inter testing data. 
 
 (a) Run
 
 ```sh
-bash download_inter_data.sh
+mkdir -p ./test_data/smpl_inter_test/
 ```
-
-to get our smpl inter test dataset.
+Download our SMPL inter test data from [smpl_inter_data](https://www.icloud.com/iclouddrive/0fC-vqM9UCK-kl2KA56f4OwqA#smpl%5Finter%5Ftest) in `./test_data/smpl_inter_test/`
 
 To evaluate average epe on inter test dataset.
 
-(b) set JOB_NAME="eval_optical_flow_inter" in ./script/inference_local.sh
+(b) set `JOB_NAME="eval_optical_flow_inter"` in `./script/inference_local.sh`
 
 (c) Run
 
@@ -69,7 +68,7 @@ bash ./script/inference_local.sh
 
 ### 4. Inference on toy examples for visualization
 
-Check out inference_demo.ipynb for toy examples.
+Check out `./inference_demo.ipynb` for toy examples.
 
 ## Citation
 
