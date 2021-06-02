@@ -27,7 +27,7 @@ Here we show how to run our code on SMPL intra and inter testing data. You can d
 bash download_model.sh
 ```
 
-### 2. Evaluate on intra testing data. (Testing data will be uploaded soon)
+### 2. Evaluate on intra testing data.
 
 (a) Run
 
