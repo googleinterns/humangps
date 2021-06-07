@@ -1,0 +1,154 @@
+<html>
+  <head>
+    <title>HumanGPS TensorFlow.js Demo</title>
+    <link
+      href="https://fonts.googleapis.com/css?family=Roboto"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/css/bootstrap.min.css"
+      integrity="sha384-/Y6pD6FV/Vv2HJnA6t+vslU6fwYXjCFtcEpHbNJ0lyAFsXTsjBbfaDjzALeQsN6M"
+      crossorigin="anonymous"
+    />
+    <link href="demo.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.6/dat.gui.min.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-core@3.0.0/dist/tf-core.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-backend-cpu@3.0.0/dist/tf-backend-cpu.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-backend-webgl@3.0.0/dist/tf-backend-webgl.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-layers@3.0.0/dist/tf-layers.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-converter@3.0.0/dist/tf-converter.js"></script>
+    <script src="https://unpkg.com/@tensorflow/tfjs-backend-wasm@3.0.0/dist/tf-backend-wasm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@3.0.0-beta.4/dist/signature_pad.umd.min.js"></script>
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-RTBV33BNQV"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-RTBV33BNQV');
+    </script>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-md navbar-dark fixed-top bg-dark">
+      <a class="navbar-brand" href="#">Human<span class="color-g">G</span><span class="color-p">P</span
+        ><span class="color-s">S</span>: <span class="color-g">Geodesic</span> <span class="color-p">Pre</span
+          ><span class="color-s">Serving</span> Feature for Dense Human Correspondences</a>
+
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarToggle">
+            <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarToggle">
+          <ul class="navbar-nav ml-auto">
+              <li class="nav-item">
+                  <a class="nav-link" href="https://feitongt.github.io/HumanGPS/#", target="_self">Home</a>
+              </li>
+              <li class="nav-item">
+                  <a class="nav-link" href="https://feitongt.github.io/HumanGPS/#Paper", target="_self">Paper</a>
+              </li>
+              <li class="nav-item">
+                  <a class="nav-link" href="https://feitongt.github.io/HumanGPS/#Video_presentation", target="_self">Talks</a>
+              </li>
+              <li class="nav-item">
+                  <a class="nav-link" href="https://feitongt.github.io/HumanGPS/#Vis_feature", target="_self">Videos</a>
+              </li>
+              <li class="nav-item">
+                  <a class="nav-link active" href="https://feitongt.github.io/HumanGPS/demo/", target="_self">Live Demo</a>
+              </li>
+              <li class="nav-item">
+                  <a class="nav-link" href="https://feitongt.github.io/HumanGPS/#Applications", target="_self">Applications</a>
+              </li_self>
+          </ul>
+      </div>
+  </nav>
+
+    <div class="container">
+      <div id="instruction">
+        <h1>
+          Human<span class="color-g">G</span><span class="color-p">P</span
+          ><span class="color-s">S</span><br />
+        </h1>
+        <br/>
+        1. Click Choose File to upload a human image and a mask image (recommended w : h = 256 : 384) or use the example images:
+        <button class="load-preset" onclick="loadPreset(1);">1</button>
+        <button class="load-preset" onclick="loadPreset(2);">2</button>
+        <button class="load-preset" onclick="loadPreset(3);">3</button>
+        <br />
+        2. Click 'Process' button to run the model. You may use
+        <button class="load-preset" onclick="SetPen();">Pen</button>,
+        <button class="load-preset" onclick="SetBrush();">Brush</button>,
+        <button class="load-preset" onclick="SetEraser();">Eraser</button>, and
+        <button class="load-preset" onclick="ClearBtn();">Clear</button> to doodle on the mask image.
+        <br />
+        Note that the first time of 'Process' takes longer time for initialization.
+      </div>
+      <br />
+      <div class="row">
+        <div class="col-3">
+          <img
+            id="im1"
+            class="input-image"
+            alt=""
+            src="example_data/im3.jpg"
+          />
+        </div>
+        <div class="col-3">
+          <canvas id="im1_mask" class="mask" height="384" width="256"></canvas>
+        </div>
+        <div class="col-2 align-self-center text-center">
+          Human<span class="color-g">G</span><span class="color-p">P</span
+          ><span class="color-s">S</span><br />
+          <br />
+          <button id="predict" onclick="predict();" disabled>Run</button>
+          <br />
+          <br />
+          <span id="perf">
+          </span>
+        </div>
+        <div class="col-3">
+          <canvas id="result"></canvas>
+        </div>
+      </div>
+      <br />
+      <div class="row">
+        <div class="col-3">
+          <input
+            type="file"
+            id="imgUploader1"
+            accept="image/*"
+            onchange="changeImage(this, 'im1');"
+          />
+        </div>
+        <div class="col-3">
+          <input
+            type="file"
+            id="maskUploader1"
+            accept="image/*"
+            onchange="changeImage(this, 'im1_mask');"
+          />
+        </div>
+      </div>
+      <br />
+      <div class="row">
+          <h4>Citation</h4>
+          <br/>
+          <a href="../humangps2021.bib" target="_blank">&nbsp;BibTeX, 1 KB</a>
+          <div class="col-11">
+          <pre>@inproceedings{tan2021humangps,
+  author = {Tan, Feitong and Tang, Danhang and Mingsong, Dou and Kaiwen, Guo and Pandey, Rohit and Keskin, Cem and Du, Ruofei and Sun, Deqing and Bouaziz, Sofien and Fanello, Sean and Tan, Ping and Zhang, Yinda},
+  title = {HumanGPS: Geodesic PreServing Feature for Dense Human Correspondences},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  month = {June},
+  year = {2021}
+}
+          </pre>
+          </div>
+      </div>
+      <br/>
+      <script type="text/javascript" src="//rf.revolvermaps.com/0/0/8.js?i=5vvziwff45r&amp;m=6&amp;c=ff0000&amp;cr1=ffffff&amp;f=arial&amp;l=33" async="async"></script>
+    </div>
+    <script src="./index.js"></script>
+  </body>
+</html>

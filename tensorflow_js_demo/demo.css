@@ -1,0 +1,67 @@
+img .input-image {
+  width: 256px;
+  height: 384px;
+}
+.color-g {
+  color: #db4437;
+}
+.color-p {
+  color: #f4b400;
+}
+.color-s {
+  color: #4285f4;
+}
+.color-w {
+  color: white;
+}
+#perf {
+  color: grey;
+}
+
+#result {
+  width: 256px;
+  height: 384px;
+  border: 1px solid #0f9d58;
+}
+
+.mask {
+  width: 256px;
+  height: 384px;
+}
+
+.arrow {
+  width: 120px;
+}
+
+.line {
+  margin-top: 14px;
+  width: 90px;
+  background: blue;
+  height: 10px;
+  float: left;
+}
+
+.point {
+  width: 0;
+  height: 0;
+  border-top: 20px solid transparent;
+  border-bottom: 20px solid transparent;
+  border-left: 30px solid blue;
+  float: right;
+}
+
+.penpad {
+  z-index: 99;
+  cursor: url(images/pen.png), auto;
+}
+
+.eraserpad {
+  z-index: 99;
+  cursor: url(images/eraser.png), auto;
+}
+
+#predict {
+  font-size: 1.5em;
+  border-radius: 0.2em;
+  padding: 0.3em;
+}
