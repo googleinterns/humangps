@@ -530,8 +530,6 @@ class GeodesicFeatureLoss:
     if 'correspondence_loss_weight' in self._loss_hparams:
       correspondence_loss = self.get_intra_consistency_loss(
           source_feature_pyramid, target_feature_pyramid, flow_gt, flow_mask)
-      print(flow_gt.shape)
-      print(flow_mask.shape)
 
       loss_summaries['correspondence_loss'] = correspondence_loss
 

@@ -325,7 +325,7 @@ def human_correspondence_dataset(
           len(filenames), reshuffle_each_iteration=True)
     dataset = filenames_dataset.map(
         lambda x: tf_parse_function(x, dataset_params['data_path'], attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+        num_parallel_calls=tf.data.experimental.AUTOTUNE)
     dataset = dataset.batch(dataset_params['batch_size'], drop_remainder=True)
 
   if 'smpl_intra_path' in dataset_params:
@@ -336,7 +336,7 @@ def human_correspondence_dataset(
           len(filenames), reshuffle_each_iteration=True)
     dataset = filenames_dataset.map(
         lambda x: tf_parse_function(x, attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+        num_parallel_calls=tf.data.experimental.AUTOTUNE)
     dataset = dataset.batch(dataset_params['batch_size'], drop_remainder=True)
 
   if 'renderpeople_path' in dataset_params:
@@ -347,7 +347,7 @@ def human_correspondence_dataset(
           len(filenames), reshuffle_each_iteration=True)
     renderpeople_dataset = filenames_dataset.map(
         lambda x: tf_parse_function(x, attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+        num_parallel_calls=tf.data.experimental.AUTOTUNE)
     renderpeople_dataset = renderpeople_dataset.batch(dataset_params['batch_size'], drop_remainder=True)
     datasets = [dataset, renderpeople_dataset]
     dataset = tf.data.experimental.sample_from_datasets(datasets, _RATIO_ADD_RP)
@@ -360,7 +360,7 @@ def human_correspondence_dataset(
           len(filenames), reshuffle_each_iteration=True)
     holodeck_dataset = filenames_dataset.map(
         lambda x: tf_parse_function(x, attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+        num_parallel_calls=tf.data.experimental.AUTOTUNE)
     holodeck_dataset = holodeck_dataset.batch(dataset_params['batch_size'], drop_remainder=True)
     datasets = [dataset, holodeck_dataset]
     dataset = tf.data.experimental.sample_from_datasets(datasets, _RATIO_ADD_RP)
@@ -373,15 +373,15 @@ def human_correspondence_dataset(
           len(filenames), reshuffle_each_iteration=True)
     smpl_inter_dataset = filenames_dataset.map(
         lambda x: tf_parse_function(x, attributes),
-        num_parallel_calls=tf.data.AUTOTUNE)
+        num_parallel_calls=tf.data.experimental.AUTOTUNE)
     smpl_inter_dataset = smpl_inter_dataset.batch(dataset_params['batch_size'], drop_remainder=True)
     datasets = [dataset, smpl_inter_dataset]
     dataset = tf.data.experimental.sample_from_datasets(datasets, _RATIO_ADD_RP)
 
   if dataset_params['is_training']:
-    dataset = dataset.map(augment_colors, num_parallel_calls=tf.data.AUTOTUNE)
+    dataset = dataset.map(augment_colors, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-  dataset = dataset.prefetch(tf.data.AUTOTUNE)
+  dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
   if dataset_params['is_training']:
     # Set deterministic to false for training.

@@ -21,7 +21,7 @@ pip install gdown
 
 Here we show how to run our code on SMPL intra and inter testing data. You can download the rest of the synthetic SMPL testing data used in the paper [here]().
 
-### 1. Download pretrained model
+### 1. Download pretrained model.
 
 ```sh
 bash download_model.sh
@@ -32,10 +32,10 @@ bash download_model.sh
 (a) Run
 
 ```sh
-mkdir -p ./test_data/smpl_intra_test/
+mkdir -p ./test_data/
 ```
 
-Download our SMPL intra test data from [smpl_intra_data](https://www.icloud.com/iclouddrive/0UmpxsQ3btifW8F67ENT6chng#smpl%5Fintra%5Ftest) in `./test_data/smpl_intra_test/`
+Download our SMPL intra test data from [smpl_intra_data](https://www.icloud.com/iclouddrive/0UmpxsQ3btifW8F67ENT6chng#smpl%5Fintra%5Ftest) in `./test_data/`
 
 To evaluate average epe on intra test dataset.
 
@@ -52,9 +52,9 @@ bash ./script/inference_local.sh
 (a) Run
 
 ```sh
-mkdir -p ./test_data/smpl_inter_test/
+mkdir -p ./test_data/
 ```
-Download our SMPL inter test data from [smpl_inter_data](https://www.icloud.com/iclouddrive/0fC-vqM9UCK-kl2KA56f4OwqA#smpl%5Finter%5Ftest) in `./test_data/smpl_inter_test/`
+Download our SMPL inter test data from [smpl_inter_data](https://www.icloud.com/iclouddrive/0fC-vqM9UCK-kl2KA56f4OwqA#smpl%5Finter%5Ftest) in `./test_data/`
 
 To evaluate average epe on inter test dataset.
 
@@ -66,7 +66,15 @@ To evaluate average epe on inter test dataset.
 bash ./script/inference_local.sh
 ```
 
-### 4. Inference on toy examples for visualization
+### 4. Train on intra testing data.
+Currently, we can not provide the whole training dataset due to the copyright and huge size of the data.
+
+Here, we provide an example configuration for training on intra testing data.
+```sh
+bash ./script/train_local.sh
+```
+
+### 5. Inference on toy examples for visualization.
 
 Check out `./inference_demo.ipynb` for toy examples.
 
